@@ -6,9 +6,23 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, 
 from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
 
 from bot import Bot
-from config import ADMINS, OWNER_ID, FORCE_MSG, START_MSG, CUSTOM_CAPTION, DISABLE_CHANNEL_BUTTON, PROTECT_CONTENT
-from helper_func import subscribed, encode, decode, get_messages
-from database.database import add_user, del_user, full_userbase, present_user
+from config import ADMINS, FORCE_MSG, START_MSG, CUSTOM_CAPTION, DISABLE_CHANNEL_BUTTON, PROTECT_CONTENT
+from helper_func import (
+    copy_file_with_styled_buttons,
+    decode,
+    file_update_keyboard,
+    get_messages,
+    send_force_subscribe_message,
+    subscribed,
+)
+from database.database import (
+    add_user,
+    del_user,
+    full_userbase,
+    get_force_subscriptions,
+    get_or_create_force_subscribe_link,
+    present_user,
+)
 
 
 
@@ -65,12 +79,15 @@ async def start_command(client: Client, message: Message):
             else:
                 caption = "" if not msg.caption else msg.caption.html
 
-            if DISABLE_CHANNEL_BUTTON:
-                reply_markup = msg.reply_markup
-            else:
-                reply_markup = None
+            source_markup = msg.reply_markup if DISABLE_CHANNEL_BUTTON else None
+            reply_markup = file_update_keyboard(source_markup)
 
             try:
+                if await copy_file_with_styled_buttons(
+                    client, msg, message.from_user.id, caption, source_markup,
+                ):
+                    await asyncio.sleep(0.5)
+                    continue
                 await msg.copy(chat_id=message.from_user.id, caption = caption, parse_mode = ParseMode.HTML, reply_markup = reply_markup, protect_content=PROTECT_CONTENT)
                 await asyncio.sleep(0.5)
             except FloodWait as e:
@@ -115,17 +132,40 @@ REPLY_ERROR = """<code>Use this command as a reply to any telegram message with 
     
 @Bot.on_message(filters.command('start') & filters.private)
 async def not_joined(client: Client, message: Message):
-    buttons = [
-        [
-            InlineKeyboardButton(text="Join Channel 1", url=client.invitelink),
-            InlineKeyboardButton(text="Join Channel 2", url=client.invitelink2),
-        ]
-    ]
+    buttons = []
+    join_buttons = []
+    for channel in await get_force_subscriptions():
+        if not channel["enabled"] or not channel["channel_id"]:
+            continue
+        try:
+            async def create_request_link(channel_id=channel["channel_id"], slot=channel["slot"]):
+                return await client.create_chat_invite_link(
+                    chat_id=channel_id,
+                    name=f"force-subscribe-{slot}",
+                    creates_join_request=True,
+                )
+
+            invite_link = await get_or_create_force_subscribe_link(
+                channel["slot"], channel["channel_id"], create_request_link,
+            )
+            emoji = "📢" if channel["slot"] == 1 else "🎥"
+            join_buttons.append(InlineKeyboardButton(
+                text=f"{emoji} Join Channel {channel['slot']}",
+                url=invite_link,
+            ))
+        except Exception as error:
+            client.LOGGER(__name__).warning(
+                "Unable to prepare request link for channel %s: %s", channel["slot"], error,
+            )
+
+    if join_buttons:
+        # Channel 1 and Channel 2 remain side-by-side, left and right.
+        buttons.append(join_buttons)
     try:
         buttons.append(
             [
                 InlineKeyboardButton(
-                    text = 'Try Again',
+                    text = '🔄 Try Again',
                     url = f"https://t.me/{client.username}?start={message.command[1]}"
                 )
             ]
@@ -133,18 +173,20 @@ async def not_joined(client: Client, message: Message):
     except IndexError:
         pass
 
-    await message.reply(
-        text = FORCE_MSG.format(
-                first = message.from_user.first_name,
-                last = message.from_user.last_name,
-                username = None if not message.from_user.username else '@' + message.from_user.username,
-                mention = message.from_user.mention,
-                id = message.from_user.id
-            ),
-        reply_markup = InlineKeyboardMarkup(buttons),
-        quote = True,
-        disable_web_page_preview = True
+    text = FORCE_MSG.format(
+        first=message.from_user.first_name,
+        last=message.from_user.last_name,
+        username=None if not message.from_user.username else '@' + message.from_user.username,
+        mention=message.from_user.mention,
+        id=message.from_user.id,
     )
+    if not await send_force_subscribe_message(client, message, text, buttons):
+        await message.reply(
+            text=text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            quote=True,
+            disable_web_page_preview=True,
+        )
 
 @Bot.on_message(filters.command('users') & filters.private & filters.user(ADMINS))
 async def get_users(client: Bot, message: Message):
@@ -166,7 +208,21 @@ async def send_text(client: Bot, message: Message):
         pls_wait = await message.reply("<i>Broadcasting Message.. This will Take Some Time</i>")
         for chat_id in query:
             try:
-                await broadcast_msg.copy(chat_id)
+                copy_options = {}
+                if broadcast_msg.media:
+                    source_markup = broadcast_msg.reply_markup if DISABLE_CHANNEL_BUTTON else None
+                    if await copy_file_with_styled_buttons(
+                        client,
+                        broadcast_msg,
+                        chat_id,
+                        broadcast_msg.caption.html if broadcast_msg.caption else "",
+                        source_markup,
+                    ):
+                        successful += 1
+                        total += 1
+                        continue
+                    copy_options["reply_markup"] = file_update_keyboard(source_markup)
+                await broadcast_msg.copy(chat_id, **copy_options)
                 successful += 1
             except FloodWait as e:
                 await asyncio.sleep(e.x)
