@@ -60,11 +60,12 @@ async def get_force_subscriptions():
     ]
 
 
-async def get_or_create_force_subscribe_link(slot, channel_id, create_link):
-    """Reuse one request-to-join link per configured FSub channel."""
+async def get_or_create_force_subscribe_link(slot, channel_id, create_link, link_type="normal"):
+    """Reuse one FSub link per configured channel and link type."""
     saved = force_subscribe_links.find_one({
         "slot": slot,
         "channel_id": channel_id,
+        "link_type": link_type,
     })
     if saved and saved.get("invite_link"):
         return saved["invite_link"]
@@ -76,7 +77,7 @@ async def get_or_create_force_subscribe_link(slot, channel_id, create_link):
     if not isinstance(invite_link, str) or not invite_link:
         raise ValueError("The created force-subscribe invite link is invalid")
     force_subscribe_links.update_one(
-        {"slot": slot, "channel_id": channel_id},
+        {"slot": slot, "channel_id": channel_id, "link_type": link_type},
         {"$set": {"invite_link": invite_link}},
         upsert=True,
     )
