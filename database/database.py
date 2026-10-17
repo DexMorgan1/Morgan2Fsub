@@ -70,6 +70,11 @@ async def get_or_create_force_subscribe_link(slot, channel_id, create_link):
         return saved["invite_link"]
 
     invite_link = await create_link()
+    # Pyrogram returns a ChatInviteLink object, while MongoDB and Telegram
+    # inline buttons need its URL string.
+    invite_link = getattr(invite_link, "invite_link", invite_link)
+    if not isinstance(invite_link, str) or not invite_link:
+        raise ValueError("The created force-subscribe invite link is invalid")
     force_subscribe_links.update_one(
         {"slot": slot, "channel_id": channel_id},
         {"$set": {"invite_link": invite_link}},
