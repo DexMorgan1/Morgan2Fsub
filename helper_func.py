@@ -227,6 +227,7 @@ async def approve_force_subscribe_request(client, request):
         return
     try:
         await client.approve_chat_join_request(request.chat.id, request.from_user.id)
+        client.LOGGER(__name__).info("Auto-approved a force-subscribe join request.")
     except Exception as error:
         client.LOGGER(__name__).warning("Could not approve a join request: %s", error)
 
