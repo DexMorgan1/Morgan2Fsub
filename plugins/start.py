@@ -139,11 +139,12 @@ async def not_joined(client: Client, message: Message):
             continue
         try:
             async def create_request_link(channel_id=channel["channel_id"], slot=channel["slot"]):
-                return await client.create_chat_invite_link(
+                created_link = await client.create_chat_invite_link(
                     chat_id=channel_id,
                     name=f"force-subscribe-{slot}",
                     creates_join_request=True,
                 )
+                return created_link.invite_link
 
             invite_link = await get_or_create_force_subscribe_link(
                 channel["slot"], channel["channel_id"], create_request_link,
@@ -183,7 +184,7 @@ async def not_joined(client: Client, message: Message):
     if not await send_force_subscribe_message(client, message, text, buttons):
         await message.reply(
             text=text,
-            reply_markup=InlineKeyboardMarkup(buttons),
+            reply_markup=InlineKeyboardMarkup(buttons) if buttons else None,
             quote=True,
             disable_web_page_preview=True,
         )
