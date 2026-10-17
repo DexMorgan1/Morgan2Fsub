@@ -13,44 +13,60 @@ from logging.handlers import RotatingFileHandler
 TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
 
 #Your API ID from my.telegram.org
-APP_ID = int(os.environ.get("APP_ID", "5166878"))
+APP_ID = int(os.environ.get("APP_ID", "0"))
 
 #Your API Hash from my.telegram.org
-API_HASH = os.environ.get("API_HASH", "fdafb41f9a67f40e34a6c67f47730a92")
+API_HASH = os.environ.get("API_HASH", "")
 
 #Your db channel Id
-CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1001973418807"))
+CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "0"))
 
 # NAMA OWNER
-OWNER = os.environ.get("OWNER", "iBOXTVADS")
+OWNER = os.environ.get("OWNER", "")
 
 #OWNER ID
-OWNER_ID = int(os.environ.get("OWNER_ID", "6124171612"))
+OWNER_ID = int(os.environ.get("OWNER_ID", "0"))
 
 #Port
 PORT = os.environ.get("PORT", "8030")
 
 #Database
 DB_URI = os.environ.get("DATABASE_URL", "")
-DB_NAME = os.environ.get("DATABASE_NAME", "bot13")
+DB_NAME = os.environ.get("DATABASE_NAME", "Morgan2Fsub")
 
 #force sub channel id, if you want enable force sub
-FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", "-1002311266823"))
-FORCE_SUB_CHANNEL2 = int(os.environ.get("FORCE_SUB_CHANNEL2", "-1002311266823"))
+FORCE_SUB_CHANNEL = int(os.environ.get("FORCE_SUB_CHANNEL", os.environ.get("FORCE_SUB_CHANNEL_1", "0")))
+FORCE_SUB_CHANNEL2 = int(os.environ.get("FORCE_SUB_CHANNEL2", os.environ.get("FORCE_SUB_CHANNEL_2", "0")))
+FORCE_SUB_CHANNEL_ENABLED = os.environ.get("FORCE_SUB_CHANNEL_ENABLED", "True").lower() == "true"
+FORCE_SUB_CHANNEL2_ENABLED = os.environ.get("FORCE_SUB_CHANNEL2_ENABLED", "True").lower() == "true"
+AUTO_APPROVE_JOIN_REQUESTS = os.environ.get("AUTO_APPROVE_JOIN_REQUESTS", "True").lower() == "true"
 
 TG_BOT_WORKERS = int(os.environ.get("TG_BOT_WORKERS", "4"))
 
 #start message
-START_MSG = os.environ.get("START_MESSAGE", "<b>Hello Pirate!! {first}\n\n ɪ Store files for iBOX TV and users can access them through clicking special buttons. </b>")
+START_MSG = os.environ.get("START_MESSAGE", "<b>Hello {first}. I store private files for @SeriesAchievers</b>")
 try:
-    ADMINS=[6124171612]
-    for x in (os.environ.get("ADMINS", "762308466").split()):
+    ADMINS = []
+    for x in os.environ.get("ADMINS", "").split():
         ADMINS.append(int(x))
 except ValueError:
-        raise Exception("Your Admins list does not contain valid integers.")
+    raise ValueError("ADMINS must be a space-separated list of Telegram numeric IDs.")
 
 #Force sub message 
-FORCE_MSG = os.environ.get("FORCE_SUB_MESSAGE", "ʜᴇʟʟᴏ {first}\n\n<b>ᴊᴏɪɴ ᴏᴜʀ ᴄʜᴀɴɴᴇʟ using any button below ᴀɴᴅ ᴛʜᴇɴ ᴄʟɪᴄᴋ ᴏɴ ʀᴇʟᴏᴀᴅ button ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ʀᴇǫᴜᴇꜱᴛᴇᴅ ꜰɪʟᴇ.</b>")
+FORCE_MSG = os.environ.get(
+    "FORCE_SUB_MESSAGE",
+    "👋 <b>Hello, {first},</b>\n\n"
+    "<i>To Receive the requested Files, you must join our two channels below.</i> 👇\n\n"
+    "📢 <b>Join, then tap 'Try Again' to access your requested files.</b>",
+)
+
+# File update buttons are controlled from Railway. Empty links safely hide
+# their corresponding button without requiring a code change.
+TV_SHOW_BUTTON_TEXT = os.environ.get("TV_SHOW_BUTTON_TEXT", "📺 TV SHOW").strip() or "📺 TV SHOW"
+TV_SHOW_BUTTON_LINK = os.environ.get("TV_SHOW_BUTTON_LINK", "").strip()
+MOVIES_BUTTON_TEXT = os.environ.get("MOVIES_BUTTON_TEXT", "🎬 MOVIES").strip() or "🎬 MOVIES"
+MOVIES_BUTTON_LINK = os.environ.get("MOVIES_BUTTON_LINK", "").strip()
+FILE_UPDATE_BUTTONS_ENABLED = os.environ.get("FILE_UPDATE_BUTTONS_ENABLED", "True").lower() == "true"
 
 #set your Custom Caption here, Keep None for Disable Custom Caption
 CUSTOM_CAPTION = os.environ.get("CUSTOM_CAPTION", None)
@@ -64,8 +80,9 @@ DISABLE_CHANNEL_BUTTON = os.environ.get("DISABLE_CHANNEL_BUTTON", None) == 'True
 BOT_STATS_TEXT = "<b>BOT UPTIME</b>\n{uptime}"
 USER_REPLY_TEXT = "Pirate ! ʏᴏᴜ Need to be myy Owner to do that !!"
 
-ADMINS.append(OWNER_ID)
-ADMINS.append(6124171612)
+if OWNER_ID:
+    ADMINS.append(OWNER_ID)
+ADMINS = list(set(ADMINS))
 
 LOG_FILE_NAME = "filesharingbot.txt"
 
