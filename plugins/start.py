@@ -138,16 +138,16 @@ async def not_joined(client: Client, message: Message):
         if not channel["enabled"] or not channel["channel_id"]:
             continue
         try:
-            async def create_request_link(channel_id=channel["channel_id"], slot=channel["slot"]):
+            async def create_normal_link(channel_id=channel["channel_id"], slot=channel["slot"]):
                 created_link = await client.create_chat_invite_link(
                     chat_id=channel_id,
                     name=f"force-subscribe-{slot}",
-                    creates_join_request=True,
                 )
                 return created_link.invite_link
 
             invite_link = await get_or_create_force_subscribe_link(
-                channel["slot"], channel["channel_id"], create_request_link,
+                channel["slot"], channel["channel_id"], create_normal_link,
+                link_type="normal",
             )
             emoji = "📢" if channel["slot"] == 1 else "🎥"
             join_buttons.append(InlineKeyboardButton(
