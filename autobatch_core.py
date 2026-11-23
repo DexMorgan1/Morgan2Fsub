@@ -8,9 +8,9 @@ VIDEO_EXTENSIONS = {".mkv", ".mp4", ".avi", ".mov", ".webm", ".m4v", ".wmv", ".t
 
 # Match only explicit season-and-episode labels; do not mistake years for seasons.
 PATTERNS = [
-    re.compile(r"(?i)(?<!\w)s(?:eason)?[\s._-]*0*(?P<season>\d{1,2})[\s._-]*e(?:p(?:isode)?)?[\s._-]*0*(?P<episode>\d{1,3})(?!\d)"),
-    re.compile(r"(?i)(?<!\w)season[\s._-]*0*(?P<season>\d{1,2})[\s._-]*(?:episode|ep|e)[\s._-]*0*(?P<episode>\d{1,3})(?!\d)"),
-    re.compile(r"(?i)(?<!\w)(?P<season>\d{1,2})[\s._-]*x[\s._-]*0*(?P<episode>\d{1,3})(?!\d)"),
+    re.compile(r"(?i)(?<![A-Za-z0-9])s(?:eason)?[\s._-]*0*(?P<season>\d{1,2})[\s._-]*e(?:p(?:isode)?)?[\s._-]*0*(?P<episode>\d{1,3})(?!\d)"),
+    re.compile(r"(?i)(?<![A-Za-z0-9])season[\s._-]*0*(?P<season>\d{1,2})[\s._-]*(?:episode|ep|e)[\s._-]*0*(?P<episode>\d{1,3})(?!\d)"),
+    re.compile(r"(?i)(?<![A-Za-z0-9])(?P<season>\d{1,2})[\s._-]*x[\s._-]*0*(?P<episode>\d{1,3})(?!\d)"),
 ]
 
 def parse_episode(text):
