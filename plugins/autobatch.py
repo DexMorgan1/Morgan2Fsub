@@ -47,10 +47,16 @@ def record_file(message, override=None):
     if not media or not getattr(message, "id", None) or message.id <= 0:
         return False
     filename = getattr(media, "file_name", "") or ""
+    ensure_indexes()
+    key = {"channel_id": CHANNEL_ID, "message_id": message.id}
+    existing = files.find_one(key)
+    # A manual identification is authoritative until an admin labels it again.
+    # Channel caption edits must never silently overwrite the chosen series.
+    if override is None and existing and existing.get("manual_override"):
+        return True
     parsed = override if override is not None else parse_media(
         filename, message.caption or "", is_video=bool(message.video)
     )
-    ensure_indexes()
     if not parsed:
         unrecognized.update_one(
             {"channel_id": CHANNEL_ID, "message_id": message.id},
@@ -62,7 +68,7 @@ def record_file(message, override=None):
             upsert=True,
         )
         return False
-    unrecognized.delete_one({"channel_id": CHANNEL_ID, "message_id": message.id})
+    unrecognized.delete_one(key)
     document = dict(parsed)
     document.update({
         "channel_id": CHANNEL_ID,
