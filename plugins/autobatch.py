@@ -61,6 +61,20 @@ def record_file(message):
         {"$set": document},
         upsert=True,
     )
+    # Existing season links must include any newly indexed episodes. Keep
+    # their tokens stable, so previously shared links continue working.
+    filter_key = {"channel_id": CHANNEL_ID, "series_id": document["series_id"], "season": document["season"]}
+    existing_link = links.find_one(filter_key)
+    if existing_link:
+        records = list(files.find({"channel_id": CHANNEL_ID, "series_id": document["series_id"], "season": document["season"]}))
+        seasons = organize_seasons(records)
+        selection = next((row for row in seasons if row["season"] == document["season"]), None)
+        if selection:
+            links.update_one(filter_key, {"$set": {
+                "message_ids": selection["message_ids"],
+                "updated_at": datetime.now(timezone.utc),
+                "series_title": document["series_title"],
+            }})
     return True
 
 
@@ -170,7 +184,7 @@ async def scanbatch(client: Client, message):
         await message.reply_text("Use /scanbatch FIRST_ID LAST_ID (up to 1000 channel posts per scan).\nExample: /scanbatch 1 500")
         return
     progress = await message.reply_text("Checking old DATABASE messages %s to %s. Nothing will be forwarded." % (start, end))
-    found, count = 0, 0
+    found, count, unrecognized_media = 0, 0, 0
     try:
         for beginning in range(start, end + 1, 200):
             message_ids = list(range(beginning, min(end + 1, beginning + 200)))
@@ -185,11 +199,18 @@ async def scanbatch(client: Client, message):
                 count += 1
                 if record_file(old_message):
                     found += 1
+                elif old_message.video or old_message.document:
+                    unrecognized_media += 1
     except Exception as error:
         client.LOGGER(__name__).warning("AutoBatch old-message scan failed: %s", error)
         await progress.edit_text("Scan stopped. Check bot access to DATABASE and try a smaller ID range. No files were changed.")
         return
-    await progress.edit_text("Scan complete: checked %s messages and indexed %s named episodes. Send /autobatch to create links." % (count, found))
+    await progress.edit_text(
+        "Scan complete: checked %s messages, recognized %s episodes, "
+        "and skipped %s files with unrecognized names. "
+        "Send /autobatch to view the indexed shows."
+        % (count, found, unrecognized_media)
+    )
 
 
 @Bot.on_message(filters.private & filters.user(ADMINS) & filters.command("autobatch"))
