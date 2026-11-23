@@ -41,6 +41,11 @@ async def start_command(client: Client, message: Message):
             base64_string = text.split(" ", 1)[1]
         except:
             return
+        # AutoBatch links use a random token, not the old numeric range format.
+        if base64_string.startswith("ab_"):
+            from plugins.autobatch import deliver_auto_batch
+            await deliver_auto_batch(client, message, base64_string[3:])
+            return
         string = await decode(base64_string)
         argument = string.split("-")
         if len(argument) == 3:
