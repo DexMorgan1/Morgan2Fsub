@@ -47,6 +47,10 @@ def record_file(message, override=None):
     if not media or not getattr(message, "id", None) or message.id <= 0:
         return False
     filename = getattr(media, "file_name", "") or ""
+    # Do not list PDFs, subtitles, or other non-video documents as unknown episodes.
+    from autobatch_core import VIDEO_EXTENSIONS
+    if not message.video and os.path.splitext(filename)[1].lower() not in VIDEO_EXTENSIONS:
+        return False
     ensure_indexes()
     key = {"channel_id": CHANNEL_ID, "message_id": message.id}
     existing = files.find_one(key)
