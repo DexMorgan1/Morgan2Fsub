@@ -21,6 +21,15 @@ async def channel_post(client: Client, message: Message):
         print(e)
         await reply_text.edit_text("Something went Wrong..!")
         return
+    # Copies created by this bot may not trigger the incoming channel handler.
+    # Index the actual posted message here, without waiting for an update.
+    try:
+        from plugins.autobatch import ENABLED, record_file
+        if ENABLED:
+            record_file(post_message)
+    except Exception as error:
+        client.LOGGER(__name__).warning("AutoBatch indexing copied file failed: %s", error)
+
     converted_id = post_message.id * abs(client.db_channel.id)
     string = f"get-{converted_id}"
     base64_string = await encode(string)
