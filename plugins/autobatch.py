@@ -14,7 +14,7 @@ from pyrogram.enums import ParseMode
 from pyrogram.errors import FloodWait
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from autobatch_core import organize_seasons, parse_media
+from autobatch_core import organize_seasons, parse_media, parse_episode
 from bot import Bot
 from config import ADMINS, CHANNEL_ID, CUSTOM_CAPTION, PROTECT_CONTENT, DISABLE_CHANNEL_BUTTON
 from database.database import database
@@ -25,6 +25,7 @@ MAX_SCAN = 1000
 PAGE_SIZE = 8
 files = database["auto_batch_files"]
 links = database["auto_batch_links"]
+unrecognized = database["auto_batch_unrecognized"]
 _indexes_ready = False
 
 
@@ -36,25 +37,49 @@ def ensure_indexes():
     files.create_index([("channel_id", 1), ("series_id", 1), ("season", 1)])
     links.create_index("token", unique=True)
     links.create_index([("channel_id", 1), ("series_id", 1), ("season", 1)], unique=True)
+    unrecognized.create_index([("channel_id", 1), ("message_id", 1)], unique=True)
     _indexes_ready = True
 
 
-def record_file(message):
-    """Index only relevant documents/videos and reliable title matches."""
+def record_file(message, override=None):
+    """Index identifiable episodes; remember unknown media for admin review."""
     media = message.video or message.document
     if not media or not getattr(message, "id", None) or message.id <= 0:
         return False
     filename = getattr(media, "file_name", "") or ""
-    parsed = parse_media(filename, message.caption or "", is_video=bool(message.video))
-    if not parsed:
+    # Do not list PDFs, subtitles, or other non-video documents as unknown episodes.
+    from autobatch_core import VIDEO_EXTENSIONS
+    if not message.video and os.path.splitext(filename)[1].lower() not in VIDEO_EXTENSIONS:
         return False
     ensure_indexes()
+    key = {"channel_id": CHANNEL_ID, "message_id": message.id}
+    existing = files.find_one(key)
+    # A manual identification is authoritative until an admin labels it again.
+    # Channel caption edits must never silently overwrite the chosen series.
+    if override is None and existing and existing.get("manual_override"):
+        return True
+    parsed = override if override is not None else parse_media(
+        filename, message.caption or "", is_video=bool(message.video)
+    )
+    if not parsed:
+        unrecognized.update_one(
+            {"channel_id": CHANNEL_ID, "message_id": message.id},
+            {"$set": {
+                "file_name": filename[:300],
+                "caption": (message.caption or "")[:350],
+                "last_checked": datetime.now(timezone.utc),
+            }},
+            upsert=True,
+        )
+        return False
+    unrecognized.delete_one(key)
     document = dict(parsed)
     document.update({
         "channel_id": CHANNEL_ID,
         "message_id": message.id,
         "file_name": filename[:300],
         "indexed_at": datetime.now(timezone.utc),
+        "manual_override": override is not None,
     })
     files.update_one(
         {"channel_id": CHANNEL_ID, "message_id": message.id},
@@ -162,7 +187,7 @@ def create_season_links(client, series_id):
     return ("\n".join(out) % html.escape(title))[:4096]
 
 
-@Bot.on_message(filters.channel & filters.incoming & filters.chat(CHANNEL_ID), group=1)
+@Bot.on_message(filters.channel & filters.chat(CHANNEL_ID), group=1)
 async def auto_index_new_posts(client: Client, message):
     if not ENABLED:
         return
@@ -170,6 +195,125 @@ async def auto_index_new_posts(client: Client, message):
         record_file(message)
     except Exception as error:
         client.LOGGER(__name__).warning("AutoBatch indexing failed: %s", error)
+
+
+@Bot.on_edited_message(filters.channel & filters.chat(CHANNEL_ID), group=1)
+async def auto_index_edited_posts(client: Client, message):
+    if not ENABLED:
+        return
+    try:
+        record_file(message)
+    except Exception as error:
+        client.LOGGER(__name__).warning("AutoBatch edit indexing failed: %s", error)
+
+
+@Bot.on_message(filters.private & filters.user(ADMINS) & filters.command("autobatchstatus"))
+async def autobatch_status(client: Client, message):
+    if not ENABLED:
+        await message.reply_text("AutoBatch is disabled on this bot.")
+        return
+    try:
+        ensure_indexes()
+        scope = {"channel_id": CHANNEL_ID}
+        known_count = files.count_documents(scope)
+        unknown_count = unrecognized.count_documents(scope)
+        series_count = len(list_series())
+        await message.reply_text(
+            "<b>AutoBatch DATABASE report</b>\n"
+            "Indexed episode files: %s\n"
+            "Recognized series: %s\n"
+            "Files needing identification: %s\n\n"
+            "Use /unrecognizedfiles to review skipped files. "
+            "These counts only cover posts the bot received or that were scanned with /scanbatch."
+            % (known_count, series_count, unknown_count)
+        )
+    except Exception as error:
+        client.LOGGER(__name__).warning("AutoBatch status failed: %s", error)
+        await message.reply_text("Could not read the AutoBatch index.")
+
+
+@Bot.on_message(filters.private & filters.user(ADMINS) & filters.command("unrecognizedfiles"))
+async def unrecognized_files(client: Client, message):
+    if not ENABLED:
+        await message.reply_text("AutoBatch is disabled on this bot.")
+        return
+    try:
+        page = max(1, int(message.command[1])) if len(message.command) > 1 else 1
+        page = min(page, 10000)
+        scope = {"channel_id": CHANNEL_ID}
+        ensure_indexes()
+        total = unrecognized.count_documents(scope)
+        rows = list(
+            unrecognized.find(scope).sort("message_id", -1).skip((page - 1) * 10).limit(10)
+        )
+        if not rows:
+            await message.reply_text(
+                "No unrecognized media in this page. "
+                "Use /scanbatch for older posts if needed."
+            )
+            return
+        lines = ["<b>Unrecognized DATABASE files</b> — %s total; page %s" % (total, page)]
+        private_part = str(abs(CHANNEL_ID))
+        if private_part.startswith("100"):
+            private_part = private_part[3:]
+        for row in rows:
+            name = row.get("file_name") or row.get("caption") or "(No filename or caption)"
+            name = " ".join(name.split())[:95]
+            file_id = row["message_id"]
+            lines.append(
+                "\n<b>#%s</b> — %s\nhttps://t.me/c/%s/%s"
+                % (file_id, html.escape(name), private_part, file_id)
+            )
+        lines.append(
+            "\nTo identify an episode: /labelbatch MESSAGE_ID Show Title S01E01"
+        )
+        await message.reply_text("\n".join(lines)[:4000], disable_web_page_preview=True)
+    except (ValueError, IndexError):
+        await message.reply_text("Use /unrecognizedfiles or /unrecognizedfiles 2")
+    except Exception as error:
+        client.LOGGER(__name__).warning("AutoBatch unresolved listing failed: %s", error)
+        await message.reply_text("Could not list unrecognized files.")
+
+
+@Bot.on_message(filters.private & filters.user(ADMINS) & filters.command("labelbatch"))
+async def label_batch_file(client: Client, message):
+    if not ENABLED:
+        await message.reply_text("AutoBatch is disabled on this bot.")
+        return
+    try:
+        parts = (message.text or "").split(maxsplit=2)
+        message_id = int(parts[1])
+        if message_id <= 0:
+            raise ValueError("Invalid message ID")
+        parsed = parse_episode(parts[2])
+        if not parsed:
+            raise ValueError("Missing clear series and season/episode")
+    except (IndexError, ValueError):
+        await message.reply_text(
+            "Use /labelbatch MESSAGE_ID Show Title S01E01\n"
+            "Example: /labelbatch 12345 Breaking Bad S01E01"
+        )
+        return
+    try:
+        original = await client.get_messages(client.db_channel.id, message_id)
+        if isinstance(original, list):
+            original = original[0] if original else None
+        if not original or getattr(original, "empty", False) or not (original.video or original.document):
+            await message.reply_text("That DATABASE message is missing or is not a media file.")
+            return
+        if record_file(original, override=parsed):
+            await message.reply_text(
+                "Indexed DATABASE message %s as %s — S%02dE%02d. "
+                "Original Telegram file is unchanged."
+                % (message_id, html.escape(parsed["series_title"]), parsed["season"], parsed["episode"])
+            )
+    except FloodWait as error:
+        await message.reply_text(
+            "Telegram requested a pause of %s seconds. Try again later." % error.x
+        )
+    except Exception as error:
+        client.LOGGER(__name__).warning("AutoBatch manual label failed: %s", error)
+        await message.reply_text("Could not index that file. Check the message ID and bot access.")
 
 
 @Bot.on_message(filters.private & filters.user(ADMINS) & filters.command("scanbatch"))
