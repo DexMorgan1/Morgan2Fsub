@@ -22,6 +22,18 @@ class ParserTests(unittest.TestCase):
         self.assertIsNone(parse_episode("S01E01.mkv"))
         self.assertIsNone(parse_episode("Just a video.mkv"))
 
+    def test_underscore_and_interleaved_marketing_tags(self):
+        a = parse_episode("Breaking_Bad_S01E03_1080p.mkv")
+        b = parse_episode("[MEDIA] Breaking.Bad - Season 1 Episode 03.mp4")
+        self.assertIsNotNone(a)
+        self.assertIsNotNone(b)
+        self.assertEqual(a["series_id"], b["series_id"])
+
+    def test_season_with_underscore_and_space(self):
+        parsed = parse_episode("Silo_Season_02_Episode_04_WEBRip.mp4")
+        self.assertIsNotNone(parsed)
+        self.assertEqual((parsed["season"], parsed["episode"]), (2, 4))
+
     def test_same_show_normalization(self):
         a = parse_episode("Breaking.Bad.S01E02.mkv")
         b = parse_episode("Breaking_Bad_S02E02.mkv")
