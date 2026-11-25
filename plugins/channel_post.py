@@ -9,7 +9,7 @@ from bot import Bot
 from config import ADMINS, CHANNEL_ID, DISABLE_CHANNEL_BUTTON
 from helper_func import encode, file_update_keyboard
 
-@Bot.on_message(filters.private & filters.user(ADMINS) & ~filters.command(['start','users','broadcast','batch','genlink','stats','autobatch','scanbatch','autobatchstatus','unrecognizedfiles','labelbatch']))
+@Bot.on_message(filters.private & filters.user(ADMINS) & ~filters.command(['start','users','broadcast','batch','genlink','stats','autobatch','scanbatch','autobatchstatus','unrecognizedfiles','labelbatch','buttons']))
 async def channel_post(client: Client, message: Message):
     reply_text = await message.reply_text("Please Wait...!", quote = True)
     try:
@@ -36,7 +36,7 @@ async def channel_post(client: Client, message: Message):
     link = f"https://t.me/{client.username}?start={base64_string}"
 
     share_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔁 Share URL", url=f'https://telegram.me/share/url?url={link}')]])
-    reply_markup = file_update_keyboard(share_markup)
+    reply_markup = file_update_keyboard(share_markup, bot_id=client.bot_user_id)
 
     await reply_text.edit(f"<b>Here is your link</b>\n\n{link}", reply_markup=reply_markup, disable_web_page_preview = True)
 
@@ -54,7 +54,7 @@ async def new_post(client: Client, message: Message):
     base64_string = await encode(string)
     link = f"https://SeriesAchieverAdmin.telegrams.world/?start={base64_string}"
     share_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔁 Share URL", url=f'https://telegram.me/share/url?url={link}')]])
-    reply_markup = file_update_keyboard(share_markup)
+    reply_markup = file_update_keyboard(share_markup, bot_id=client.bot_user_id)
     try:
         await message.edit_reply_markup(reply_markup)
     except Exception as e:
