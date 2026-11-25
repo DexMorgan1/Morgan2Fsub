@@ -62,10 +62,14 @@ FORCE_MSG = os.environ.get(
 
 # File update buttons are controlled from Railway. Empty links safely hide
 # their corresponding button without requiring a code change.
-TV_SHOW_BUTTON_TEXT = os.environ.get("TV_SHOW_BUTTON_TEXT", "📺 TV SHOW").strip() or "📺 TV SHOW"
+TV_SHOW_BUTTON_TEXT = os.environ.get("TV_SHOW_BUTTON_TEXT", "TV/WEB Series Index").strip() or "TV/WEB Series Index"
 TV_SHOW_BUTTON_LINK = os.environ.get("TV_SHOW_BUTTON_LINK", "").strip()
-MOVIES_BUTTON_TEXT = os.environ.get("MOVIES_BUTTON_TEXT", "🎬 MOVIES").strip() or "🎬 MOVIES"
+MOVIES_BUTTON_TEXT = os.environ.get("MOVIES_BUTTON_TEXT", "Movies").strip() or "Movies"
 MOVIES_BUTTON_LINK = os.environ.get("MOVIES_BUTTON_LINK", "").strip()
+SERIES_BUTTON_TEXT = os.environ.get("SERIES_BUTTON_TEXT", "Series").strip() or "Series"
+SERIES_BUTTON_LINK = os.environ.get("SERIES_BUTTON_LINK", "").strip()
+ANIME_BUTTON_TEXT = os.environ.get("ANIME_BUTTON_TEXT", "Anime").strip() or "Anime"
+ANIME_BUTTON_LINK = os.environ.get("ANIME_BUTTON_LINK", "").strip()
 FILE_UPDATE_BUTTONS_ENABLED = os.environ.get("FILE_UPDATE_BUTTONS_ENABLED", "True").lower() == "true"
 
 #set your Custom Caption here, Keep None for Disable Custom Caption
