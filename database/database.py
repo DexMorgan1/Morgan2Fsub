@@ -82,3 +82,52 @@ async def get_or_create_force_subscribe_link(slot, channel_id, create_link, link
         upsert=True,
     )
     return invite_link
+
+
+# File-navigation buttons are per Telegram bot ID, even if deployments share MongoDB.
+file_button_settings = database["file_button_settings"]
+file_button_pending = database["file_button_pending"]
+
+
+def get_file_button_overrides(bot_id):
+    doc = file_button_settings.find_one({"_id": int(bot_id)}, {"links": 1})
+    return dict(doc.get("links", {})) if doc else {}
+
+
+def set_file_button_override(bot_id, button_key, link):
+    if button_key not in ("movies", "series", "anime", "tv_index"):
+        raise ValueError("Unknown file button.")
+    file_button_settings.update_one(
+        {"_id": int(bot_id)},
+        {"$set": {"links." + button_key: link}},
+        upsert=True,
+    )
+
+
+def set_pending_file_button_edit(bot_id, user_id, button_key):
+    from datetime import datetime, timedelta, timezone
+    if button_key not in ("movies", "series", "anime", "tv_index"):
+        raise ValueError("Unknown file button.")
+    file_button_pending.update_one(
+        {"_id": str(bot_id) + ":" + str(user_id)},
+        {"$set": {"button_key": button_key,
+                  "expires_at": datetime.now(timezone.utc) + timedelta(minutes=15)}},
+        upsert=True,
+    )
+
+
+def get_pending_file_button_edit(bot_id, user_id):
+    from datetime import datetime, timezone
+    key = str(bot_id) + ":" + str(user_id)
+    doc = file_button_pending.find_one({"_id": key})
+    if not doc:
+        return None
+    expires_at = doc.get("expires_at")
+    if not expires_at or expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        file_button_pending.delete_one({"_id": key})
+        return None
+    return doc.get("button_key")
+
+
+def clear_pending_file_button_edit(bot_id, user_id):
+    file_button_pending.delete_one({"_id": str(bot_id) + ":" + str(user_id)})
