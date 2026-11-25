@@ -121,30 +121,36 @@ async def receive_button_link(client, message):
         key = get_pending_file_button_edit(bot_id(client), message.from_user.id)
     except Exception:
         client.LOGGER(__name__).exception("Could not read pending button edit")
-        # Don't permit a possible sensitive link text to become a database file.
-        message.stop_propagation()
+        # Reply first: Pyrogram stop_propagation raises immediately.
         await message.reply_text("Settings unavailable. Please send /buttons again.")
+        message.stop_propagation()
         return
 
     if not key:
+        # Normal messages must still reach existing file-store handlers.
         return
-    message.stop_propagation()
-    if message.text.strip().lower() == "/cancel":
-        clear_pending_file_button_edit(bot_id(client), message.from_user.id)
-        await message.reply_text("Cancelled.", reply_markup=menu_markup())
-        return
+
     try:
-        link = normalize_button_url(message.text)
-    except ValueError as exc:
-        await message.reply_text(escape(str(exc)) + "\nSend a valid link or /cancel.")
-        return
-    try:
-        set_file_button_override(bot_id(client), key, link)
-        clear_pending_file_button_edit(bot_id(client), message.from_user.id)
-        await message.reply_text(
-            "✅ <b>" + escape(BUTTON_LABELS[key]) + "</b> updated.\n\n" +
-            menu_text(client), reply_markup=menu_markup(),
-        )
-    except Exception:
-        client.LOGGER(__name__).exception("Could not save button destination")
-        await message.reply_text("Could not save this link. Please try again.")
+        if message.text.strip().lower() == "/cancel":
+            clear_pending_file_button_edit(bot_id(client), message.from_user.id)
+            await message.reply_text("Cancelled.", reply_markup=menu_markup())
+        else:
+            try:
+                link = normalize_button_url(message.text)
+            except ValueError as exc:
+                await message.reply_text(escape(str(exc)) + "\nSend a valid link or /cancel.")
+            else:
+                try:
+                    set_file_button_override(bot_id(client), key, link)
+                    clear_pending_file_button_edit(bot_id(client), message.from_user.id)
+                    await message.reply_text(
+                        "✅ <b>" + escape(BUTTON_LABELS[key]) + "</b> updated.\n\n" +
+                        menu_text(client), reply_markup=menu_markup(),
+                    )
+                except Exception:
+                    client.LOGGER(__name__).exception("Could not save button destination")
+                    await message.reply_text("Could not save this link. Please try again.")
+    finally:
+        # Avoid treating link messages as database uploads, but only after
+        # the bot has saved the URL and sent its confirmation or error.
+        message.stop_propagation()
