@@ -438,7 +438,7 @@ async def deliver_auto_batch(client, message, token):
         else:
             caption = "" if not media.caption else media.caption.html
         source_markup = media.reply_markup if DISABLE_CHANNEL_BUTTON else None
-        reply_markup = file_update_keyboard(source_markup)
+        reply_markup = file_update_keyboard(source_markup, bot_id=client.bot_user_id)
         try:
             copied = await copy_file_with_styled_buttons(
                 client, media, message.from_user.id, caption, source_markup,
