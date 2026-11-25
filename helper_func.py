@@ -28,6 +28,7 @@ from config import (
     TV_SHOW_BUTTON_TEXT,
 )
 from database.database import get_force_subscriptions
+from file_button_settings import get_effective_file_buttons
 
 
 async def is_subscribed(_, client, update):
@@ -102,18 +103,23 @@ async def get_message_id(client, message):
     return 0
 
 
-def file_update_keyboard(existing_markup=None):
+def file_update_keyboard(existing_markup=None, bot_id=None):
     """Fallback Pyrogram keyboard for the Railway-controlled file buttons."""
     if not FILE_UPDATE_BUTTONS_ENABLED:
         return existing_markup
     rows = [list(row) for row in existing_markup.inline_keyboard] if existing_markup else []
-    buttons = []
-    if TV_SHOW_BUTTON_LINK:
-        buttons.append(InlineKeyboardButton(TV_SHOW_BUTTON_TEXT, url=TV_SHOW_BUTTON_LINK))
-    if MOVIES_BUTTON_LINK:
-        buttons.append(InlineKeyboardButton(MOVIES_BUTTON_TEXT, url=MOVIES_BUTTON_LINK))
-    if buttons:
-        rows.append(buttons)
+    # A three-button category row, then the full-width TV/WEB Series Index row.
+    # Missing links stay hidden instead of creating buttons that cannot open.
+    buttons = get_effective_file_buttons(bot_id)
+    category_row = [
+        InlineKeyboardButton(label, url=url)
+        for key, label, url in buttons if key != "tv_index" and url
+    ]
+    if category_row:
+        rows.append(category_row)
+    for key, label, url in buttons:
+        if key == "tv_index" and url:
+            rows.append([InlineKeyboardButton(label, url=url)])
     return InlineKeyboardMarkup(rows) if rows else None
 
 
@@ -129,19 +135,26 @@ def _button_payload(button):
     return payload
 
 
-def file_update_button_payload(existing_markup=None):
-    """Create solid-blue file buttons for Telegram's Bot API."""
-    if not FILE_UPDATE_BUTTONS_ENABLED or not (TV_SHOW_BUTTON_LINK or MOVIES_BUTTON_LINK):
+def file_update_button_payload(existing_markup=None, bot_id=None):
+    """Build Telegram-styled file navigation from per-bot saved link settings."""
+    if not FILE_UPDATE_BUTTONS_ENABLED:
+        return None
+    buttons = get_effective_file_buttons(bot_id)
+    if not any(url for _, _, url in buttons):
         return None
     rows = []
     if existing_markup:
-        rows = [[_button_payload(button) for button in row] for row in existing_markup.inline_keyboard]
-    buttons = []
-    if TV_SHOW_BUTTON_LINK:
-        buttons.append({"text": TV_SHOW_BUTTON_TEXT, "url": TV_SHOW_BUTTON_LINK, "style": "primary"})
-    if MOVIES_BUTTON_LINK:
-        buttons.append({"text": MOVIES_BUTTON_TEXT, "url": MOVIES_BUTTON_LINK, "style": "primary"})
-    rows.append(buttons)
+        rows = [[_button_payload(button) for button in row]
+                for row in existing_markup.inline_keyboard]
+    category_row = [
+        {"text": label, "url": url, "style": "primary"}
+        for key, label, url in buttons if key != "tv_index" and url
+    ]
+    if category_row:
+        rows.append(category_row)
+    for key, label, url in buttons:
+        if key == "tv_index" and url:
+            rows.append([{"text": label, "url": url, "style": "primary"}])
     return {"inline_keyboard": rows}
 
 
@@ -171,7 +184,7 @@ async def _bot_api_call(method, payload, logger):
 
 async def copy_file_with_styled_buttons(client, source_message, chat_id, caption, existing_markup=None):
     """Copy media with styled file buttons, or let the caller use Pyrogram."""
-    reply_markup = file_update_button_payload(existing_markup)
+    reply_markup = file_update_button_payload(existing_markup, bot_id=client.bot_user_id)
     if not reply_markup or not getattr(source_message, "media", None):
         return False
     result = await _bot_api_call(
