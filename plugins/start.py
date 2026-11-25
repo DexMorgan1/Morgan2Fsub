@@ -85,7 +85,7 @@ async def start_command(client: Client, message: Message):
                 caption = "" if not msg.caption else msg.caption.html
 
             source_markup = msg.reply_markup if DISABLE_CHANNEL_BUTTON else None
-            reply_markup = file_update_keyboard(source_markup)
+            reply_markup = file_update_keyboard(source_markup, bot_id=client.bot_user_id)
 
             try:
                 if await copy_file_with_styled_buttons(
@@ -227,7 +227,7 @@ async def send_text(client: Bot, message: Message):
                         successful += 1
                         total += 1
                         continue
-                    copy_options["reply_markup"] = file_update_keyboard(source_markup)
+                    copy_options["reply_markup"] = file_update_keyboard(source_markup, bot_id=client.bot_user_id)
                 await broadcast_msg.copy(chat_id, **copy_options)
                 successful += 1
             except FloodWait as e:
