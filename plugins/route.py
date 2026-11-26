@@ -120,3 +120,77 @@ async def gween_test_batch(request):
     except Exception:
         client.LOGGER(__name__).warning("Gween test batch failed (details redacted).")
         return result({"ok": False, "reason": "test_check_failed"}, 503)
+
+
+# One-shot, fixed-record integration for Gween's openly licensed Caminandes pilot.
+# It accepts no identifiers or request body, never scans or posts media, and keeps a
+# stable token if a prior successful call already created the same batch.
+_CAMINANDES_MESSAGE_ID = 7358
+_CAMINANDES_SERIES_ID = "gween-caminandes-7358"
+_CAMINANDES_TITLE = "Caminandes (2013) — S01E01 — Llama Drama"
+_CAMINANDES_CREDIT_MARKERS = (
+    "CC BY 3.0",
+    "https://creativecommons.org/licenses/by/3.0/",
+    "https://commons.wikimedia.org/wiki/File:Caminandes-_Llama_Drama_-_Short_Movie.ogv",
+)
+
+
+@routes.post("/gween/v1/caminandes-batch")
+async def gween_caminandes_batch(request):
+    def result(payload, status=200):
+        return web.json_response(payload, status=status, headers={"Cache-Control": "no-store"})
+
+    key = os.environ.get("GWEEN_STATUS_API_KEY", "")
+    if (os.environ.get("GWEEN_STATUS_API_ENABLED", "false").strip().lower() != "true"
+            or len(key) < 43 or os.environ.get("CHANNEL_ID", "").strip() != str(_TEST_CHANNEL)):
+        return result({"ok": False}, 404)
+    supplied = request.headers.getall("Authorization", [])
+    if len(supplied) != 1 or not hmac.compare_digest(supplied[0].encode("utf-8"), ("Bearer " + key).encode("utf-8")):
+        return result({"ok": False}, 401)
+    if request.query_string or request.can_read_body:
+        return result({"ok": False, "reason": "unexpected_input"}, 400)
+    client = request.app.get(GWEEN_CLIENT_KEY)
+    if (not client or (getattr(client, "username", "") or "").lower() != "seriesachieverhdbot"
+            or getattr(getattr(client, "db_channel", None), "id", None) != _TEST_CHANNEL):
+        return result({"ok": False, "reason": "bot_not_ready"}, 503)
+    try:
+        from plugins import autobatch as ab
+        if not ab.ENABLED:
+            return result({"ok": False, "reason": "autobatch_disabled"}, 409)
+        original = await asyncio.wait_for(
+            client.get_messages(_TEST_CHANNEL, _CAMINANDES_MESSAGE_ID, replies=0), timeout=15
+        )
+        if isinstance(original, list):
+            original = original[0] if original else None
+        media = (getattr(original, "video", None) or getattr(original, "document", None)) if original else None
+        caption = getattr(original, "caption", "") or ""
+        if (not original or getattr(original, "empty", False)
+                or getattr(getattr(original, "chat", None), "id", None) != _TEST_CHANNEL
+                or getattr(original, "id", None) != _CAMINANDES_MESSAGE_ID or not media
+                or _CAMINANDES_TITLE not in caption
+                or any(marker not in caption for marker in _CAMINANDES_CREDIT_MARKERS)):
+            return result({"ok": False, "reason": "caminandes_record_mismatch"}, 409)
+        ab.ensure_indexes()
+        scope = {"channel_id": _TEST_CHANNEL, "series_id": _CAMINANDES_SERIES_ID, "season": 1}
+        saved = ab.links.find_one(scope)
+        if saved and saved.get("message_ids") != [_CAMINANDES_MESSAGE_ID]:
+            return result({"ok": False, "reason": "existing_caminandes_batch_conflict"}, 409)
+        if not saved:
+            try:
+                ab.links.insert_one(dict(scope, token=secrets.token_urlsafe(18),
+                    message_ids=[_CAMINANDES_MESSAGE_ID], updated_at=datetime.now(timezone.utc),
+                    series_title="Caminandes (2013)"))
+            except DuplicateKeyError:
+                pass
+        saved = ab.links.find_one(scope)
+        if (not saved or saved.get("message_ids") != [_CAMINANDES_MESSAGE_ID]
+                or saved.get("series_title") != "Caminandes (2013)"
+                or not re.fullmatch(r"[A-Za-z0-9_-]{24}", saved.get("token") or "")):
+            return result({"ok": False, "reason": "caminandes_batch_conflict"}, 409)
+        client.LOGGER(__name__).info("Gween Caminandes batch verified: original message 7358; no media copied.")
+        return result({"ok": True, "title": "Caminandes (2013)", "season": 1, "episodes": 1,
+            "channel_id": str(_TEST_CHANNEL), "message_id": _CAMINANDES_MESSAGE_ID,
+            "batch_url": "https://t.me/SeriesAchieverHDBOT?start=ab_" + saved["token"]})
+    except Exception:
+        client.LOGGER(__name__).warning("Gween Caminandes batch failed (details redacted).")
+        return result({"ok": False, "reason": "caminandes_check_failed"}, 503)
