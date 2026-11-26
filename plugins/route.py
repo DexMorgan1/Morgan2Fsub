@@ -212,16 +212,6 @@ def _gween_authorized(request):
     return key
 
 
-@routes.get("/gween/v1/check", allow_head=False)
-async def gween_status_check(request):
-    authorized = _gween_authorized(request)
-    if authorized is None:
-        return _gween_result({"ok": False}, 404)
-    if authorized is False:
-        return _gween_result({"ok": False}, 401)
-    return _gween_result({"ok": True, "protocol": 2, "mode": "season-batches",
-        "channel_id": os.environ["CHANNEL_ID"].strip(),
-        "autobatch_enabled": os.environ.get("AUTO_BATCH_ENABLED", "False").lower() == "true"})
 
 
 # Secure, explicit manifest API. It never discovers, downloads, copies, edits, or
