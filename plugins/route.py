@@ -70,41 +70,38 @@ async def gween_test_batch(request):
         return result({"ok": False, "reason": "bot_not_ready"}, 503)
 
     try:
-        from autobatch_core import parse_episode
         from plugins import autobatch as ab
         if not ab.ENABLED:
             return result({"ok": False, "reason": "autobatch_disabled"}, 409)
-        series_id = parse_episode(_TEST_NAMES[1])["series_id"]
-        scope = {"channel_id": _TEST_CHANNEL, "series_id": series_id}
-        rows = list(ab.files.find(scope).limit(3))
-        if len(rows) != 2 or {row.get("episode") for row in rows} != {1, 2}:
-            return result({"ok": False, "reason": "expected_two_indexed_test_files"}, 409)
-        for row in rows:
-            if (row.get("season") != 1 or _test_filename(row.get("file_name")) != _TEST_NAMES[row["episode"]]
-                    or row.get("series_title") != "Gween Test"
-                    or not isinstance(row.get("message_id"), int) or row["message_id"] <= 0):
-                return result({"ok": False, "reason": "unexpected_test_index"}, 409)
-        ids = [row["message_id"] for row in sorted(rows, key=lambda row: row["episode"])]
-        if len(set(ids)) != 2:
-            return result({"ok": False, "reason": "duplicate_test_messages"}, 409)
-        originals = await asyncio.wait_for(client.get_messages(_TEST_CHANNEL, ids, replies=0), timeout=15)
+
+        # Fixed message IDs supplied by the admin for this one pilot.
+        # Do not search or alter the AutoBatch index or any other files.
+        approved_ids = [7354, 7355]
+        originals = await asyncio.wait_for(
+            client.get_messages(_TEST_CHANNEL, approved_ids, replies=0), timeout=15
+        )
         if not isinstance(originals, list) or len(originals) != 2:
             return result({"ok": False, "reason": "test_files_not_found"}, 409)
         verified = {}
         for message in originals:
-            if not message or getattr(message, "empty", False) or getattr(getattr(message, "chat", None), "id", None) != _TEST_CHANNEL:
+            if (not message or getattr(message, "empty", False)
+                    or getattr(getattr(message, "chat", None), "id", None) != _TEST_CHANNEL
+                    or message.id not in approved_ids or message.id in verified):
                 return result({"ok": False, "reason": "test_files_not_found"}, 409)
             media = message.video or message.document
-            if not media or _test_filename(getattr(media, "file_name", "")) not in _TEST_NAMES.values():
+            filename = _test_filename(getattr(media, "file_name", None))
+            size = getattr(media, "file_size", None)
+            if (filename not in _TEST_NAMES.values() or not isinstance(size, int)
+                    or not 0 < size <= 5 * 1024 * 1024):
                 return result({"ok": False, "reason": "test_filename_mismatch"}, 409)
-            verified[message.id] = _test_filename(media.file_name)
-        if [verified.get(i) for i in ids] != [_TEST_NAMES[1], _TEST_NAMES[2]]:
+            verified[message.id] = filename
+        if set(verified) != set(approved_ids) or set(verified.values()) != set(_TEST_NAMES.values()):
             return result({"ok": False, "reason": "test_filename_mismatch"}, 409)
+        ids = [next(mid for mid, name in verified.items() if name == _TEST_NAMES[ep]) for ep in (1, 2)]
 
-        # Recheck the exact index after the Telegram read. Never overwrite an old link.
-        final_rows = list(ab.files.find(scope).limit(3))
-        if sorted((row.get("message_id"), row.get("season"), row.get("episode"), row.get("file_name")) for row in final_rows) != sorted((row["message_id"], row["season"], row["episode"], row["file_name"]) for row in rows):
-            return result({"ok": False, "reason": "test_index_changed"}, 409)
+        # An isolated pilot identity cannot collide with parser-generated IDs
+        # or be expanded automatically when new channel files are indexed.
+        scope = {"channel_id": _TEST_CHANNEL, "series_id": "gween-test-7354-7355"}
         ab.ensure_indexes()
         batch_scope = dict(scope, season=1)
         if not ab.links.find_one(batch_scope):
