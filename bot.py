@@ -68,7 +68,10 @@ class Bot(Client):
         self.username = usr_bot_me.username
         self.bot_user_id = usr_bot_me.id
         #web-response
-        app = web.AppRunner(await web_server())
+        web_app = await web_server()
+        from plugins.route import GWEEN_CLIENT_KEY
+        web_app[GWEEN_CLIENT_KEY] = self
+        app = web.AppRunner(web_app)
         await app.setup()
         bind_address = "0.0.0.0"
         await web.TCPSite(app, bind_address, PORT).start()
