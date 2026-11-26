@@ -204,7 +204,7 @@ def _gween_result(payload, status=200):
 def _gween_authorized(request):
     key = os.environ.get("GWEEN_STATUS_API_KEY", "")
     channel = os.environ.get("CHANNEL_ID", "").strip()
-    if os.environ.get("GWEEN_STATUS_API_ENABLED", "false").strip().lower() != "true" or len(key) < 43 or not re.fullmatch(r"-100\\d+", channel):
+    if os.environ.get("GWEEN_STATUS_API_ENABLED", "false").strip().lower() != "true" or len(key) < 43 or not re.fullmatch(r"-100\d+", channel):
         return None
     supplied = request.headers.getall("Authorization", [])
     if len(supplied) != 1 or not hmac.compare_digest(supplied[0].encode(), ("Bearer " + key).encode()):
