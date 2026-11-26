@@ -43,6 +43,13 @@ _TEST_NAMES = {1: "Gween Test S01E01.mp4", 2: "Gween Test S01E02.mp4"}
 _TEST_CHANNEL = -1002090847137
 
 
+def _test_filename(name):
+    # Normalize the extension only; the authorized test title stays exact.
+    if isinstance(name, str) and name[-4:].lower() == ".mp4":
+        return name[:-4] + ".mp4"
+    return None
+
+
 @routes.post("/gween/v1/test-batch")
 async def gween_test_batch(request):
     def result(payload, status=200):
@@ -73,7 +80,7 @@ async def gween_test_batch(request):
         if len(rows) != 2 or {row.get("episode") for row in rows} != {1, 2}:
             return result({"ok": False, "reason": "expected_two_indexed_test_files"}, 409)
         for row in rows:
-            if (row.get("season") != 1 or row.get("file_name") != _TEST_NAMES[row["episode"]]
+            if (row.get("season") != 1 or _test_filename(row.get("file_name")) != _TEST_NAMES[row["episode"]]
                     or row.get("series_title") != "Gween Test"
                     or not isinstance(row.get("message_id"), int) or row["message_id"] <= 0):
                 return result({"ok": False, "reason": "unexpected_test_index"}, 409)
@@ -88,9 +95,9 @@ async def gween_test_batch(request):
             if not message or getattr(message, "empty", False) or getattr(getattr(message, "chat", None), "id", None) != _TEST_CHANNEL:
                 return result({"ok": False, "reason": "test_files_not_found"}, 409)
             media = message.video or message.document
-            if not media or getattr(media, "file_name", "") not in _TEST_NAMES.values():
+            if not media or _test_filename(getattr(media, "file_name", "")) not in _TEST_NAMES.values():
                 return result({"ok": False, "reason": "test_filename_mismatch"}, 409)
-            verified[message.id] = media.file_name
+            verified[message.id] = _test_filename(media.file_name)
         if [verified.get(i) for i in ids] != [_TEST_NAMES[1], _TEST_NAMES[2]]:
             return result({"ok": False, "reason": "test_filename_mismatch"}, 409)
 
